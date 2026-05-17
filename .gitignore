@@ -1,0 +1,20 @@
+# 環境變數（絕對不能推上去）
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+
+# 音訊暫存
+static/audio/
+
+# ChromaDB 本地資料庫
+chroma_db/
+*.db
+
+# 系統檔
+.DS_Store
+Thumbs.db
