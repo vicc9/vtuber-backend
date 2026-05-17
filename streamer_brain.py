@@ -8,7 +8,6 @@ from web_search import WebSearcher
 
 load_dotenv()
 
-# Function Calling 的工具定義
 TOOLS = [
     {
         "type": "function",
@@ -33,6 +32,7 @@ TOOLS = [
     }
 ]
 
+
 class StreamerBrain:
     def __init__(self):
         print("🧠 初始化主播大腦中 (使用模型: Groq + llama3)...")
@@ -41,21 +41,18 @@ class StreamerBrain:
         if not api_key:
             raise ValueError("❌ 找不到 GROQ_API_KEY，請檢查 .env 檔案！")
 
-        self.client = AsyncGroq(api_key=api_key)
-        self.model = "llama-3.3-70b-versatile"
+        self.client  = AsyncGroq(api_key=api_key)
+        self.model   = "llama-3.3-70b-versatile"
         self.history = []
 
-        # 記憶系統
-        self.memory = MemoryManager()
+        self.memory           = MemoryManager()
         self.long_term_memory = self.memory.load_recent_summary(limit=3)
         if self.long_term_memory:
             print(f"📚 已載入長期記憶:\n{self.long_term_memory}")
         else:
             print("📭 尚無長期記憶，這是全新開始")
 
-        # 網路搜尋
         self.searcher = WebSearcher()
-
         print("✅ 主播大腦初始化完成！")
 
     def _build_system_prompt(self) -> str:
@@ -65,9 +62,17 @@ class StreamerBrain:
 嚴格以 JSON 物件輸出，絕對不能包含任何其他文字或 markdown，必須包含以下三個欄位：
 {
   "dialogue": "你的口語播報稿文字",
-  "emotion": "從 [joy, anger, sadness, neutral] 中選一個",
+  "emotion": "從 [joy, anger, sadness, neutral, curious, sleepy] 中選一個",
   "action": "從 [Wave, Nod, Think, 無動作] 中選一個"
-}"""
+}
+
+## 情緒對應說明
+- joy     → 開心、興奮、笑
+- anger   → 生氣、不滿
+- sadness → 難過、委屈、無聊（等很久時使用）
+- neutral → 平常對話
+- curious → 好奇、期待、疑問（主動搭話時使用）
+- sleepy  → 睏意、無精打采（等待非常久時使用）"""
 
         if self.long_term_memory:
             base += f"""
@@ -86,9 +91,9 @@ class StreamerBrain:
         speaker_name: str = "觀眾"
     ) -> dict:
 
-        # 儲存觀眾訊息
         self.memory.save_message("user", user_input, speaker_name=speaker_name)
 
+        # rag_context 此時已包含 behavior_prompt（由 main_server 注入）
         user_prompt = f"""當前觀眾對你說的話: "{user_input}"
 你大腦中的背景記憶資訊: "{rag_context}"
 請以 JSON 格式回應。"""
@@ -111,25 +116,22 @@ class StreamerBrain:
             )
 
             choice = first_response.choices[0]
-            search_context = ""
-            text = ""
+            text   = ""
 
-            # ── 如果 LLM 決定要搜尋 ──
             if choice.finish_reason == "tool_calls" and choice.message.tool_calls:
                 try:
                     for tool_call in choice.message.tool_calls:
                         if tool_call.function.name == "web_search":
-                            args = json.loads(tool_call.function.arguments)
-                            query = args.get("query", user_input)
+                            args         = json.loads(tool_call.function.arguments)
+                            query        = args.get("query", user_input)
                             search_result = self.searcher.search(query)
-                            search_context = search_result
-                            print(f"🔍 搜尋結果已取得，長度: {len(search_result)} 字")
+                            print(f"🔍 搜尋結果長度: {len(search_result)} 字")
 
                     messages.append(choice.message)
                     messages.append({
-                        "role": "tool",
+                        "role":         "tool",
                         "tool_call_id": choice.message.tool_calls[0].id,
-                        "content": search_context
+                        "content":      search_result
                     })
 
                     second_response = await self.client.chat.completions.create(
@@ -142,11 +144,9 @@ class StreamerBrain:
                     text = second_response.choices[0].message.content.strip()
 
                 except Exception as search_err:
-                    # ── Tool call 格式錯誤時，降級為直接回答 ──
                     print(f"⚠ Function calling 失敗，改用直接回答: {search_err}")
-                    text = ""  # 讓下面的 fallback 重新呼叫
+                    text = ""
 
-            # ── 不需要搜尋，或搜尋失敗降級 ──
             if not text:
                 final_response = await self.client.chat.completions.create(
                     model=self.model,
@@ -159,13 +159,11 @@ class StreamerBrain:
 
             data = json.loads(text)
 
-            # 更新對話歷史
-            self.history.append({"role": "user", "content": user_prompt})
-            self.history.append({"role": "assistant", "content": text})
+            self.history.append({"role": "user",      "content": user_prompt})
+            self.history.append({"role": "assistant",  "content": text})
             if len(self.history) > 20:
                 self.history = self.history[-20:]
 
-            # 儲存 AI 回應
             self.memory.save_message(
                 "assistant",
                 data.get("dialogue", ""),
@@ -179,7 +177,7 @@ class StreamerBrain:
             fallback = {
                 "dialogue": "不好意思，我剛剛思緒有點亂，可以再說一次嗎？",
                 "emotion": "neutral",
-                "action": "Think"
+                "action":  "Think"
             }
             self.memory.save_message("assistant", fallback["dialogue"])
             return fallback
@@ -189,13 +187,12 @@ class StreamerBrain:
             fallback = {
                 "dialogue": "糟糕，我的大腦剛剛當機了一下，請再說一次好嗎？",
                 "emotion": "sadness",
-                "action": "Think"
+                "action":  "Think"
             }
             self.memory.save_message("assistant", fallback["dialogue"])
             return fallback
 
     async def generate_session_summary(self) -> str:
-        """場次結束時，用 LLM 自動生成摘要並儲存"""
         conversations = self.memory.load_session_conversations()
         if not conversations:
             print("📭 本場無對話紀錄，略過摘要生成")
@@ -228,8 +225,8 @@ class StreamerBrain:
                 max_tokens=300,
             )
 
-            result = json.loads(response.choices[0].message.content)
-            summary = result.get("summary", "")
+            result    = json.loads(response.choices[0].message.content)
+            summary   = result.get("summary", "")
             key_facts = result.get("key_facts", {})
             self.memory.save_session_summary(summary=summary, key_facts=key_facts)
             return summary
@@ -242,17 +239,13 @@ class StreamerBrain:
 async def main():
     brain = StreamerBrain()
 
-    print("\n測試一：一般對話（不需要搜尋）")
+    print("\n測試一：一般對話")
     res1 = await brain.generate_live_response("嗨！主播今天過得好嗎？")
     print(json.dumps(res1, indent=4, ensure_ascii=False))
 
-    print("\n測試二：需要搜尋（AI 自動判斷）")
+    print("\n測試二：需要搜尋")
     res2 = await brain.generate_live_response("今天台灣有什麼新聞？")
     print(json.dumps(res2, indent=4, ensure_ascii=False))
-
-    print("\n測試三：觀眾強制觸發搜尋")
-    res3 = await brain.generate_live_response("查一下今天台北天氣")
-    print(json.dumps(res3, indent=4, ensure_ascii=False))
 
 if __name__ == "__main__":
     asyncio.run(main())
