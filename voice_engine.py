@@ -23,12 +23,8 @@ class VoiceEngine:
                 response_format="wav",
             )
             # ✅ 改用 with_streaming_response 避免 aread() 相容性問題
-            audio_bytes = b""
-            async for chunk in response.iter_bytes():
-                audio_bytes += chunk
-
             with open(output_path, "wb") as f:
-                f.write(audio_bytes)
+                f.write(response.content)
 
             print(f"✅ 語音檔案已成功儲存至: {output_path}")
 
