@@ -22,7 +22,10 @@ class VoiceEngine:
                 input=text,
                 response_format="wav",
             )
-            audio_bytes = await response.aread()
+            # ✅ 改用 with_streaming_response 避免 aread() 相容性問題
+            audio_bytes = b""
+            async for chunk in response.iter_bytes():
+                audio_bytes += chunk
 
             with open(output_path, "wb") as f:
                 f.write(audio_bytes)
