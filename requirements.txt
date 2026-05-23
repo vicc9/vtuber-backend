@@ -7,9 +7,13 @@ websockets==12.0
 # Environment Variables
 python-dotenv==1.0.1
 
-# AI & LLM (Groq & Tavily)
+# AI & LLM (Groq, Tavily, Ollama & LangChain)
 groq==0.8.0
 tavily-python==0.3.3
+langchain==0.2.5
+langchain-community==0.2.4
+langchain-ollama==0.1.1
+langchain-text-splitters==0.2.2
 
 # Memory & Vector Database (ChromaDB & Supabase)
 chromadb==0.5.0
