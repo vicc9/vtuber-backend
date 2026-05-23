@@ -24,10 +24,10 @@ class VoiceEngine:
                         "Content-Type": "application/json",
                     },
                     json={
-                        "model": "playai-tts",
-                        "voice": "Aaliyah-PlayAI",  # ✅ 換一個確定存在的聲音
+                        # ✅ 已替換為 Groq 目前支援的 Orpheus 模型與聲音
+                        "model": "canopylabs/orpheus-v1-english", 
+                        "voice": "autumn", 
                         "input": text,
-                        # ✅ 移除 response_format，讓它用預設的 mp3
                     }
                 )
 
@@ -43,7 +43,8 @@ class VoiceEngine:
 
         except Exception as e:
             print(f"❌ Groq TTS 失敗: {e}")
-            raise
+            # 這裡回傳空字串或 None，避免整個後端因為語音失敗而崩潰導致斷線
+            return None 
 
         return output_path
 
@@ -51,7 +52,10 @@ class VoiceEngine:
 async def main():
     engine = VoiceEngine()
     tts_audio_path = await engine.text_to_speech("大家好，我是今天的值班主播小光！")
-    print(f"生成的音訊位置: {tts_audio_path}")
+    if tts_audio_path:
+        print(f"生成的音訊位置: {tts_audio_path}")
+    else:
+        print("語音生成失敗。")
 
 if __name__ == "__main__":
     asyncio.run(main())
