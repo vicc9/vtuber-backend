@@ -5,6 +5,13 @@ from supabase import create_client
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# ================= 加上這段除錯碼 =================
+test_url = os.getenv("SUPABASE_URL")
+test_key = os.getenv("SUPABASE_KEY")
+print(f"🚨 [DEBUG] 抓到的 URL: {test_url}")
+print(f"🚨 [DEBUG] 抓到的 KEY (前10字): {str(test_key)[:10] if test_key else '完全沒抓到(None)'}")
+# ===============================================
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 
 
