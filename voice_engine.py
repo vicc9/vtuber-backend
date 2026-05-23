@@ -10,7 +10,6 @@ class VoiceEngine:
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
         self.api_key = os.getenv("GROQ_API_KEY")
-        self.tts_voice = "Celeste-PlayAI"
 
     async def text_to_speech(self, text, filename="test_tts.wav"):
         print(f"\n🎙️ 正在生成語音播報: 「{text}」")
@@ -26,12 +25,16 @@ class VoiceEngine:
                     },
                     json={
                         "model": "playai-tts",
-                        "voice": self.tts_voice,
+                        "voice": "Aaliyah-PlayAI",  # ✅ 換一個確定存在的聲音
                         "input": text,
-                        "response_format": "wav",
+                        # ✅ 移除 response_format，讓它用預設的 mp3
                     }
                 )
-                response.raise_for_status()
+
+                # 印出詳細錯誤方便 debug
+                if response.status_code != 200:
+                    print(f"❌ TTS 錯誤回應: {response.status_code} - {response.text}")
+                    response.raise_for_status()
 
                 with open(output_path, "wb") as f:
                     f.write(response.content)
