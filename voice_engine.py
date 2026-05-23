@@ -1,7 +1,6 @@
 import asyncio
 import os
 import edge_tts
-from faster_whisper import WhisperModel
 import soundfile as sf
 import io
 
@@ -10,10 +9,7 @@ class VoiceEngine:
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
         
-        print("⏳ 正在載入 Faster-Whisper 傾聽模組...")
-        self.stt_model = WhisperModel("base", device="cpu", compute_type="int8")
-        print("✅ 傾聽模組載入完成！")
-        
+        # 移除了 Faster-Whisper 的初始化，讓伺服器啟動更快、更省記憶體
         self.tts_voice = "zh-CN-XiaoyiNeural"
 
     async def text_to_speech(self, text, filename="test_tts.wav"):
@@ -39,17 +35,10 @@ class VoiceEngine:
         
         return output_path
 
-    def speech_to_text(self, audio_path):
-        print(f"\n🦻 正在辨識音訊檔...")
-        segments, info = self.stt_model.transcribe(audio_path, beam_size=5)
-        text = " ".join([segment.text for segment in segments])
-        print(f"✅ 辨識結果: 「{text.strip()}」")
-        return text.strip()
-
 async def main():
     engine = VoiceEngine()
     tts_audio_path = await engine.text_to_speech("大家好，我是今天的值班主播小光！")
-    engine.speech_to_text(tts_audio_path)
+    print(f"生成的音訊位置: {tts_audio_path}")
 
 if __name__ == "__main__":
     asyncio.run(main())
