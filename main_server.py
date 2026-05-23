@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware # 🌟 部署修改：匯入 CORS
 import uvicorn
 from dotenv import load_dotenv
 
@@ -21,7 +22,8 @@ from fastapi import UploadFile, File
 
 load_dotenv()
 
-WEBGL_DIR = "D:/VTuber_WebGL_Build"
+# 🌟 部署修改：移除原本寫死的 D 槽路徑。前端已獨立部署，後端不需要再負責 Serve HTML。
+# WEBGL_DIR = "D:/VTuber_WebGL_Build"
 
 # ─────────────────────────────────────────
 # 系統初始化
@@ -55,12 +57,26 @@ async def lifespan(app: FastAPI):
 # ─────────────────────────────────────────
 app = FastAPI(lifespan=lifespan)
 
+# 🌟 部署修改：加入 CORS 設定，允許前端跨網域請求
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # 測試時設為 "*"。正式上線後，建議改為你的 Render 前端網址，如 ["https://my-vtuber-frontend.onrender.com"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 os.makedirs("./static/audio", exist_ok=True)
 app.mount("/audio", StaticFiles(directory="./static/audio"), name="audio")
 
 # ─────────────────────────────────────────
-# ① API 路由（必須在靜態路由之前定義）
+# ① API 路由
 # ─────────────────────────────────────────
+@app.get("/")
+async def root():
+    # 🌟 部署修改：根目錄改為回傳簡單狀態，用來讓 Render 檢查服務是否存活 (Health Check)
+    return {"status": "VTuber Backend is running!"}
+
 @app.get("/api/token")
 async def get_token():
     """前端啟動時呼叫一次，取得帶時效的 HMAC Token"""
@@ -68,6 +84,19 @@ async def get_token():
     token = generate_token(client_id)
     print(f"[Auth] 發放 Token 給 client_id={client_id}")
     return JSONResponse({"token": token})
+
+@app.post("/api/stt")
+async def stt_endpoint(audio: UploadFile = File(...)):
+    """接收 WebGL 上傳的 webm 音訊，回傳辨識文字"""
+    suffix = ".webm"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(await audio.read())
+        tmp_path = tmp.name
+    try:
+        text = await transcribe_audio(tmp_path)   # 呼叫 Groq Whisper
+        return {"text": text}
+    finally:
+        os.unlink(tmp_path)
 
 # ─────────────────────────────────────────
 # ② WebSocket 端點
@@ -118,7 +147,6 @@ async def websocket_endpoint(
             try:
                 await asyncio.sleep(wait)
                 nonlocal idle_stage_index
-                # 🌟 修正：傳入連線鎖，保護背景發送安全性
                 await send_idle_response(websocket, stage, send_lock)
                 idle_stage_index += 1
                 schedule_idle()
@@ -155,7 +183,6 @@ async def websocket_endpoint(
                 print(f"🎤 收到音訊，大小: {len(audio_bytes)} bytes")
                 reset_idle_timer("voice")
 
-                # 改用執行緒安全的安全發送
                 await safe_send_json({"type": "stt_status", "status": "recognizing"})
 
                 user_text = await transcribe_audio(audio_bytes)
@@ -172,7 +199,6 @@ async def websocket_endpoint(
                 await safe_send_json({"type": "stt_result", "text": user_text})
 
                 print(f"👤 語音輸入辨識結果: {user_text}")
-                # 🌟 修正：傳入連線鎖
                 await process_and_respond(websocket, user_text, send_lock)
                 reset_idle_timer("voice")
 
@@ -182,7 +208,6 @@ async def websocket_endpoint(
                     continue
                 print(f"\n👤 觀眾說: {user_msg}")
                 reset_idle_timer("text")
-                # 🌟 修正：傳入連線鎖
                 await process_and_respond(websocket, user_msg, send_lock)
                 reset_idle_timer("text")
 
@@ -195,37 +220,10 @@ async def websocket_endpoint(
             idle_task.cancel()
         print("🏁 WebSocket 清理程序與資源釋放完成。")
 
-# ─────────────────────────────────────────
-# ③ 靜態路由（必須最後定義，避免攔截 API）
-# ─────────────────────────────────────────
-@app.get("/")
-async def serve_root():
-    return FileResponse(os.path.join(WEBGL_DIR, "index.html"))
-
-@app.post("/api/stt")
-async def stt_endpoint(audio: UploadFile = File(...)):
-    """接收 WebGL 上傳的 webm 音訊，回傳辨識文字"""
-    suffix = ".webm"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(await audio.read())
-        tmp_path = tmp.name
-    try:
-        text = await transcribe_audio(tmp_path)   # 呼叫 Groq Whisper
-        return {"text": text}
-    finally:
-        os.unlink(tmp_path)
-
-@app.get("/{full_path:path}")
-async def serve_static(full_path: str):
-    file_path = os.path.join(WEBGL_DIR, full_path)
-    if os.path.isfile(file_path):
-        return FileResponse(file_path)
-    return FileResponse(os.path.join(WEBGL_DIR, "index.html"))
 
 # ─────────────────────────────────────────
 # 共用：LLM + TTS + 推播
 # ─────────────────────────────────────────
-# 🌟 修正：加入 send_lock 參數
 async def process_and_respond(websocket: WebSocket, user_msg: str, send_lock: asyncio.Lock):
     context = rag_system.retrieve_memory(query=user_msg, k=2)
     print(f"🧠 正在搜尋關於「{user_msg}」的相關記憶...")
@@ -253,11 +251,11 @@ async def process_and_respond(websocket: WebSocket, user_msg: str, send_lock: as
         "dialogue":  response_data["dialogue"],
         "emotion":   response_data["emotion"],
         "action":    response_data["action"],
-        "audio_url": f"http://localhost:8000/audio/{audio_filename}",
+        # 🌟 部署修改：改為相對路徑，讓前端補上正確的網域
+        "audio_url": f"/audio/{audio_filename}",
         "is_idle":   False,
     }
     
-    # 🌟 修正：使用非同步鎖保護發送，阻斷 Race Condition
     async with send_lock:
         await websocket.send_text(json.dumps(payload, ensure_ascii=False))
     print("📦 回應已發送給前端！")
@@ -265,7 +263,6 @@ async def process_and_respond(websocket: WebSocket, user_msg: str, send_lock: as
 # ─────────────────────────────────────────
 # 共用：Idle 自動搭話
 # ─────────────────────────────────────────
-# 🌟 修正：加入 send_lock 參數
 async def send_idle_response(websocket: WebSocket, stage: str, send_lock: asyncio.Lock):
     intimacy = behavior_ctx.get("intimacy_score", 0)
     idle     = get_idle_prompt(stage, intimacy)
@@ -282,12 +279,12 @@ async def send_idle_response(websocket: WebSocket, stage: str, send_lock: asynci
         "dialogue":  idle["text"],
         "emotion":   idle["emotion"],
         "action":    idle["action"],
-        "audio_url": f"http://localhost:8000/audio/{audio_filename}",
+        # 🌟 部署修改：改為相對路徑
+        "audio_url": f"/audio/{audio_filename}",
         "is_idle":   True,
         "stage":     stage,
     }
     
-    # 🌟 修正：使用非同步鎖保護發送，阻斷 Race Condition
     async with send_lock:
         await websocket.send_text(json.dumps(payload, ensure_ascii=False))
 
@@ -296,4 +293,5 @@ async def send_idle_response(websocket: WebSocket, stage: str, send_lock: asynci
 # ─────────────────────────────────────────
 if __name__ == "__main__":
     print("🚀 啟動 AI 主播伺服器中...")
+    # 這裡的設定主要供本地開發使用。Render 部署時，會在 Start Command 覆蓋這些設定。
     uvicorn.run(app, host="0.0.0.0", port=8000)

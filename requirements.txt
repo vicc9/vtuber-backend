@@ -1,0 +1,20 @@
+# Web Framework & Server
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+python-multipart==0.0.9
+websockets==12.0
+
+# Environment Variables
+python-dotenv==1.0.1
+
+# AI & LLM (Groq & Tavily)
+groq==0.8.0
+tavily-python==0.3.3
+
+# Memory & Vector Database (ChromaDB & Supabase)
+chromadb==0.5.0
+supabase==2.5.0
+
+# TTS (Edge-TTS & Audio processing)
+edge-tts==6.1.12
+soundfile==0.12.1
