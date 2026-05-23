@@ -28,3 +28,5 @@ soundfile==0.12.1
 # Web Scraping / Tools
 requests==2.32.3
 beautifulsoup4==4.12.3
+
+httpx
