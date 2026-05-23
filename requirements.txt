@@ -11,14 +11,10 @@ python-dotenv==1.0.1
 groq==0.8.0
 tavily-python==0.3.3
 langchain==0.2.5
-# 新增
 langchain-community
-langchain-huggingface
-sentence-transformers
 langchain-text-splitters==0.2.2
 
-# Memory & Vector Database (ChromaDB & Supabase)
-chromadb==0.5.0
+# Memory & Vector Database (Supabase 輕量方案)
 supabase==2.5.0
 
 # TTS (Audio processing)
@@ -29,4 +25,5 @@ soundfile==0.12.1
 requests==2.32.3
 beautifulsoup4==4.12.3
 
+# HTTP Client (用來打 HuggingFace API 與替代舊版 requests)
 httpx

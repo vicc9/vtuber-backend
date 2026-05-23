@@ -11,7 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware # 🌟 部署修改：匯入 
 import uvicorn
 from dotenv import load_dotenv
 
-from news_rag import StreamerRAG
+# ✅ 第三步修改：改為從我們新建的 supabase_rag 引入
+from supabase_rag import StreamerRAG 
 from voice_engine import VoiceEngine
 from streamer_brain import StreamerBrain
 from stt_engine import transcribe_audio
@@ -22,13 +23,11 @@ from fastapi import UploadFile, File
 
 load_dotenv()
 
-# 🌟 部署修改：移除原本寫死的 D 槽路徑。前端已獨立部署，後端不需要再負責 Serve HTML。
-# WEBGL_DIR = "D:/VTuber_WebGL_Build"
-
 # ─────────────────────────────────────────
 # 系統初始化
 # ─────────────────────────────────────────
 print("初始化系統中，請稍候...")
+# ✅ 這裡現在會初始化輕量版的 Supabase RAG
 rag_system   = StreamerRAG()
 voice_engine = VoiceEngine()
 brain        = StreamerBrain()
@@ -60,7 +59,7 @@ app = FastAPI(lifespan=lifespan)
 # 🌟 部署修改：加入 CORS 設定，允許前端跨網域請求
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # 測試時設為 "*"。正式上線後，建議改為你的 Render 前端網址，如 ["https://my-vtuber-frontend.onrender.com"]
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -74,26 +73,23 @@ app.mount("/audio", StaticFiles(directory="./static/audio"), name="audio")
 # ─────────────────────────────────────────
 @app.get("/")
 async def root():
-    # 🌟 部署修改：根目錄改為回傳簡單狀態，用來讓 Render 檢查服務是否存活 (Health Check)
     return {"status": "VTuber Backend is running!"}
 
 @app.get("/api/token")
 async def get_token():
-    """前端啟動時呼叫一次，取得帶時效的 HMAC Token"""
-    client_id = "vtuber_app"   # 必須與 verify_token 的 client_id 完全一致
+    client_id = "vtuber_app"   
     token = generate_token(client_id)
     print(f"[Auth] 發放 Token 給 client_id={client_id}")
     return JSONResponse({"token": token})
 
 @app.post("/api/stt")
 async def stt_endpoint(audio: UploadFile = File(...)):
-    """接收 WebGL 上傳的 webm 音訊，回傳辨識文字"""
     suffix = ".webm"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(await audio.read())
         tmp_path = tmp.name
     try:
-        text = await transcribe_audio(tmp_path)   # 呼叫 Groq Whisper
+        text = await transcribe_audio(tmp_path) 
         return {"text": text}
     finally:
         os.unlink(tmp_path)
@@ -106,7 +102,6 @@ async def websocket_endpoint(
     websocket: WebSocket,
     token: str = Query(default="")
 ):
-    # 驗證 Token
     if not verify_token(token, client_id="vtuber_app"):
         print(f"[Auth] ❌ Token 無效，拒絕連線")
         await websocket.close(code=4001)
@@ -115,10 +110,8 @@ async def websocket_endpoint(
     await websocket.accept()
     print(f"[WS] ✅ 新連線已接受")
 
-    # 🌟 修正防線 1：建立連線獨立的非同步鎖，阻斷併發寫入衝突
     send_lock = asyncio.Lock()
 
-    # 建立一個安全發送 JSON 的內嵌安全函式，簡化迴圈內部的併發寫入
     async def safe_send_json(data: dict):
         async with send_lock:
             try:
@@ -170,10 +163,8 @@ async def websocket_endpoint(
 
     try:
         while True:
-            # 讀取底層 ASGI 原始訊息
             message = await websocket.receive()
 
-            # 🌟 修正防線 2：明確攔截 ASGI 斷線訊號，阻止迴圈進入二次 receive() 導致崩潰
             if message.get("type") == "websocket.disconnect":
                 print(f"🔌 前端已正常/異常中斷連線 (Code: {message.get('code', 1000)})")
                 break
@@ -225,8 +216,10 @@ async def websocket_endpoint(
 # 共用：LLM + TTS + 推播
 # ─────────────────────────────────────────
 async def process_and_respond(websocket: WebSocket, user_msg: str, send_lock: asyncio.Lock):
-    context = rag_system.retrieve_memory(query=user_msg, k=2)
-    print(f"🧠 正在搜尋關於「{user_msg}」的相關記憶...")
+    
+    # ✅ 第三步修改：加上 await，因為我們新寫的 Supabase RAG 是非同步(async)的
+    print(f"🧠 正在 Supabase 搜尋關於「{user_msg}」的相關記憶...")
+    context = await rag_system.retrieve_memory(query=user_msg, k=2)
 
     behavior_prompt  = behavior_ctx.get("behavior_prompt", "")
     combined_context = context
@@ -251,7 +244,6 @@ async def process_and_respond(websocket: WebSocket, user_msg: str, send_lock: as
         "dialogue":  response_data["dialogue"],
         "emotion":   response_data["emotion"],
         "action":    response_data["action"],
-        # 🌟 部署修改：改為相對路徑，讓前端補上正確的網域
         "audio_url": f"https://vtuber-backend-qwmt.onrender.com/audio/{audio_filename}",
         "is_idle":   False,
     }
@@ -279,7 +271,6 @@ async def send_idle_response(websocket: WebSocket, stage: str, send_lock: asynci
         "dialogue":  idle["text"],
         "emotion":   idle["emotion"],
         "action":    idle["action"],
-        # 🌟 部署修改：改為相對路徑
         "audio_url": f"https://vtuber-backend-qwmt.onrender.com/audio/{audio_filename}",
         "is_idle":   True,
         "stage":     stage,
@@ -293,5 +284,4 @@ async def send_idle_response(websocket: WebSocket, stage: str, send_lock: asynci
 # ─────────────────────────────────────────
 if __name__ == "__main__":
     print("🚀 啟動 AI 主播伺服器中...")
-    # 這裡的設定主要供本地開發使用。Render 部署時，會在 Start Command 覆蓋這些設定。
     uvicorn.run(app, host="0.0.0.0", port=8000)
