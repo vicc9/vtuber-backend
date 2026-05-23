@@ -12,6 +12,7 @@ groq==0.8.0
 tavily-python==0.3.3
 langchain==0.2.5
 # 新增
+langchain-community
 langchain-huggingface
 sentence-transformers
 langchain-text-splitters==0.2.2
