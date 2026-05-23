@@ -27,9 +27,16 @@ load_dotenv()
 # 系統初始化
 # ─────────────────────────────────────────
 print("初始化系統中，請稍候...")
-# ✅ 這裡現在會初始化輕量版的 Supabase RAG
+
+# 🌟 修正 404 路徑問題：取得當前檔案的絕對路徑，確保音訊資料夾位置正確
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+AUDIO_DIR = os.path.join(BASE_DIR, "static", "audio")
+os.makedirs(AUDIO_DIR, exist_ok=True)
+
+# ✅ 初始化輕量版的 Supabase RAG
 rag_system   = StreamerRAG()
-voice_engine = VoiceEngine()
+# ✅ 強制傳入絕對路徑給 VoiceEngine，確保儲存位置正確
+voice_engine = VoiceEngine(output_dir=AUDIO_DIR)
 brain        = StreamerBrain()
 tracker      = BehaviorTracker()
 behavior_ctx = {}
@@ -65,8 +72,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-os.makedirs("./static/audio", exist_ok=True)
-app.mount("/audio", StaticFiles(directory="./static/audio"), name="audio")
+# 🌟 修正 404 路徑問題：改用絕對路徑掛載靜態資料夾
+app.mount("/audio", StaticFiles(directory=AUDIO_DIR), name="audio")
 
 # ─────────────────────────────────────────
 # ① API 路由
