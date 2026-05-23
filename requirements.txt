@@ -12,7 +12,7 @@ groq==0.8.0
 tavily-python==0.3.3
 langchain==0.2.5
 langchain-community==0.2.4
-langchain-ollama==0.1.1
+sentence-transformers
 langchain-text-splitters==0.2.2
 
 # Memory & Vector Database (ChromaDB & Supabase)

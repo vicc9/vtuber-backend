@@ -252,7 +252,7 @@ async def process_and_respond(websocket: WebSocket, user_msg: str, send_lock: as
         "emotion":   response_data["emotion"],
         "action":    response_data["action"],
         # 🌟 部署修改：改為相對路徑，讓前端補上正確的網域
-        "audio_url": f"/audio/{audio_filename}",
+        "audio_url": f"https://vtuber-backend-qwmt.onrender.com/audio/{audio_filename}",
         "is_idle":   False,
     }
     
@@ -280,7 +280,7 @@ async def send_idle_response(websocket: WebSocket, stage: str, send_lock: asynci
         "emotion":   idle["emotion"],
         "action":    idle["action"],
         # 🌟 部署修改：改為相對路徑
-        "audio_url": f"/audio/{audio_filename}",
+        "audio_url": f"https://vtuber-backend-qwmt.onrender.com/audio/{audio_filename}",
         "is_idle":   True,
         "stage":     stage,
     }
