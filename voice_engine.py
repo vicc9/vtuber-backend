@@ -3,37 +3,30 @@ import os
 import httpx
 
 class VoiceEngine:
-    # Groq TTS 可用聲音列表（playai-tts 模型）
-    # 中文友善推薦：Aaliyah、Nova、Chloe
-    AVAILABLE_VOICES = [
-        "Aaliyah", "Adelaide", "Angelo", "Arsenio", "Chloe",
-        "Deedee", "Eleanor", "Fritz", "Gail", "George",
-        "Indira", "Mamaw", "Mason", "Mikail", "Mitch",
-        "Nova", "Quinn", "Ruby"
-    ]
+    # 🌟 Groq 最新 Orpheus TTS 可用英文聲音列表
+    # 女性: autumn, diana, hannah
+    # 男性: austin, daniel, troy
+    AVAILABLE_VOICES = ["autumn", "diana", "hannah", "austin", "daniel", "troy"]
 
-    def __init__(self, output_dir="./static/audio", voice="Nova"):
+    def __init__(self, output_dir="./static/audio", voice="diana"):
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
         self.api_key = os.getenv("GROQ_API_KEY")
-        # ✅ 使用不需要條款同意的 playai-tts 模型
-        self.model = "playai-tts"
-        self.voice = voice if voice in self.AVAILABLE_VOICES else "Nova"
-        print(f"🎙️ VoiceEngine 初始化完成，模型: {self.model}，聲音: {self.voice}")
+        
+        # ✅ 改用 Groq 官方最新推出的 Canopy Labs Orpheus 模型
+        self.model = "canopylabs/orpheus-v1-english"
+        self.voice = voice if voice in self.AVAILABLE_VOICES else "diana"
+        print(f"🎙️ VoiceEngine 初始化，使用 Groq 最新模型: {self.model}，聲音: {self.voice}")
 
     async def text_to_speech(self, text: str, filename: str = "test_tts.wav") -> str | None:
         """
         將文字轉為語音並儲存為 WAV 檔案。
-        回傳儲存路徑，失敗時回傳 None。
         """
-        print(f"\n🎙️ 正在生成語音播報: 「{text}」")
+        print(f"\n🎙️ 正在呼叫 Groq TTS: 「{text}」")
         output_path = os.path.join(self.output_dir, filename)
 
-        if not self.api_key:
-            print("❌ 找不到 GROQ_API_KEY 環境變數")
-            return None
-
         try:
+            # 💡 你可以在 text 中加入情緒標籤測試，例如: "[cheerful] Hello everyone!"
             async with httpx.AsyncClient(timeout=30) as client:
                 response = await client.post(
                     "https://api.groq.com/openai/v1/audio/speech",
@@ -49,15 +42,17 @@ class VoiceEngine:
                     }
                 )
 
+                # 捕捉並印出詳細的 API 錯誤，方便除錯
                 if response.status_code != 200:
-                    print(f"❌ TTS API 錯誤 [{response.status_code}]: {response.text}")
+                    print(f"❌ Groq TTS API 錯誤 [{response.status_code}]: {response.text}")
                     return None
 
+                # 將回傳的音訊寫入檔案
                 with open(output_path, "wb") as f:
                     f.write(response.content)
 
             file_size = os.path.getsize(output_path)
-            print(f"✅ 語音已儲存: {output_path} ({file_size} bytes)")
+            print(f"✅ Groq 語音已儲存: {output_path} ({file_size} bytes)")
             return output_path
 
         except httpx.TimeoutException:
