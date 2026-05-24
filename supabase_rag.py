@@ -18,8 +18,8 @@ from supabase import create_client, Client
 _supabase: Optional[Client] = None
 
 GROQ_EMBED_URL = "https://api.groq.com/openai/v1/embeddings"
-EMBED_MODEL    = "nomic-embed-text-v1.5"
-EMBED_DIM      = 768   # nomic-embed-text-v1.5 輸出維度
+EMBED_MODEL    = "nomic-embed-text-v1_5"
+EMBED_DIM      = 768   # nomic-embed-text-v1_5 輸出維度
 
 def _get_supabase() -> Client:
     global _supabase
