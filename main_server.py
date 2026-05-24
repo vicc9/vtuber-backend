@@ -224,7 +224,6 @@ async def websocket_endpoint(
 # ─────────────────────────────────────────
 async def process_and_respond(websocket: WebSocket, user_msg: str, send_lock: asyncio.Lock):
     
-    # ✅ 第三步修改：加上 await，因為我們新寫的 Supabase RAG 是非同步(async)的
     print(f"🧠 正在 Supabase 搜尋關於「{user_msg}」的相關記憶...")
     context = await rag_system.retrieve_memory(query=user_msg, k=2)
 
@@ -240,8 +239,9 @@ async def process_and_respond(websocket: WebSocket, user_msg: str, send_lock: as
     )
     print(f"🧠 大腦決策: {json.dumps(response_data, ensure_ascii=False)}")
 
+    # ✅ 修正：接收 TTS 回傳值，只有成功才附上 audio_url
     audio_filename = f"live_{int(time.time())}.wav"
-    await voice_engine.text_to_speech(
+    saved_path = await voice_engine.text_to_speech(
         text=response_data["dialogue"],
         filename=audio_filename
     )
@@ -251,13 +251,18 @@ async def process_and_respond(websocket: WebSocket, user_msg: str, send_lock: as
         "dialogue":  response_data["dialogue"],
         "emotion":   response_data["emotion"],
         "action":    response_data["action"],
-        "audio_url": f"https://vtuber-backend-qwmt.onrender.com/audio/{audio_filename}",
+        # ✅ TTS 失敗時 saved_path 為 None，audio_url 設為空字串避免前端 404
+        "audio_url": f"https://vtuber-backend-qwmt.onrender.com/audio/{audio_filename}" if saved_path else "",
         "is_idle":   False,
     }
-    
+
     async with send_lock:
         await websocket.send_text(json.dumps(payload, ensure_ascii=False))
-    print("📦 回應已發送給前端！")
+    
+    if saved_path:
+        print("📦 回應已發送（含音訊）！")
+    else:
+        print("📦 回應已發送（無音訊，TTS 失敗）！")
 
 # ─────────────────────────────────────────
 # 共用：Idle 自動搭話
@@ -267,8 +272,9 @@ async def send_idle_response(websocket: WebSocket, stage: str, send_lock: asynci
     idle     = get_idle_prompt(stage, intimacy)
     print(f"[Idle] stage={stage}，觸發：{idle['text']}")
 
+    # ✅ 修正：接收 TTS 回傳值
     audio_filename = f"idle_{int(time.time())}.wav"
-    await voice_engine.text_to_speech(
+    saved_path = await voice_engine.text_to_speech(
         text=idle["text"],
         filename=audio_filename
     )
@@ -278,11 +284,12 @@ async def send_idle_response(websocket: WebSocket, stage: str, send_lock: asynci
         "dialogue":  idle["text"],
         "emotion":   idle["emotion"],
         "action":    idle["action"],
-        "audio_url": f"https://vtuber-backend-qwmt.onrender.com/audio/{audio_filename}",
+        # ✅ TTS 失敗時不附 audio_url
+        "audio_url": f"https://vtuber-backend-qwmt.onrender.com/audio/{audio_filename}" if saved_path else "",
         "is_idle":   True,
         "stage":     stage,
     }
-    
+
     async with send_lock:
         await websocket.send_text(json.dumps(payload, ensure_ascii=False))
 
