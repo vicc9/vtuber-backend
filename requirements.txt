@@ -16,7 +16,6 @@ langchain-text-splitters==0.2.2
 
 # Memory & Vector Database (Supabase 輕量方案)
 supabase==2.5.0
-sentence-transformers
 
 # TTS (Audio processing)
 edge-tts==6.1.12
