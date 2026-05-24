@@ -17,9 +17,8 @@ from supabase import create_client, Client
 
 _supabase: Optional[Client] = None
 
-GROQ_EMBED_URL = "https://api.groq.com/openai/v1/embeddings"
-EMBED_MODEL    = "nomic-embed-text-v1_5"
-EMBED_DIM      = 768   # nomic-embed-text-v1_5 輸出維度
+HF_EMBED_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 def _get_supabase() -> Client:
     global _supabase
@@ -33,31 +32,39 @@ def _get_supabase() -> Client:
 
 
 async def _embed(text: str) -> list[float]:
-    """
-    呼叫 Groq Embedding API，回傳向量。
-    完全走外部 API，不佔用本地記憶體。
-    """
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise RuntimeError("缺少 GROQ_API_KEY")
-
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(
-            GROQ_EMBED_URL,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type":  "application/json",
-            },
-            json={
-                "model": EMBED_MODEL,
-                "input": text,
-            }
-        )
-        if resp.status_code != 200:
-            raise RuntimeError(f"Embedding API 錯誤 [{resp.status_code}]: {resp.text}")
-
-        data = resp.json()
-        return data["data"][0]["embedding"]
+    """呼叫 Hugging Face API 生成 384 維度向量"""
+    if not text or not text.strip():
+        return []
+        
+    headers = {}
+    if HF_TOKEN:
+        headers["Authorization"] = f"Bearer {HF_TOKEN}"
+        
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        try:
+            response = await client.post(
+                HF_EMBED_URL,
+                headers=headers,
+                json={"inputs": text}
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            # 處理 API 可能回傳的模型載入中狀態
+            if isinstance(data, dict) and "error" in data:
+                print(f"⚠️ HF 模型載入中或發生錯誤: {data['error']}")
+                return []
+                
+            # API 回傳可能是 list[float] 或 list[list[float]]
+            if isinstance(data, list):
+                if len(data) > 0 and isinstance(data[0], list):
+                    return data[0]
+                return data
+            return []
+            
+        except Exception as e:
+            print(f"❌ HF Embedding 失敗: {e}")
+            return []
 
 
 class StreamerRAG:
