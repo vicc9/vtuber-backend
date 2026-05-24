@@ -47,16 +47,40 @@ behavior_ctx = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global behavior_ctx
-    behavior_ctx = await load_behavior_context()
-    print(f"📊 行為記憶載入完成：{behavior_ctx}")
+
+    # ✅ Startup：用 try/except 保護，Supabase 失敗不影響服務啟動
+    try:
+        behavior_ctx = await load_behavior_context()
+        print(f"📊 行為記憶載入完成：{behavior_ctx}")
+    except Exception as e:
+        print(f"⚠️ 行為記憶載入失敗（使用預設值）: {e}")
+        behavior_ctx = {
+            "first_threshold":  15,
+            "bored_threshold":  45,
+            "sleepy_threshold": 120,
+            "user_type":        "unknown",
+            "intimacy_score":   0,
+            "behavior_prompt":  "這是你們第一次見面，態度友善有禮，慢慢認識對方。",
+            "avg_silence":      0,
+        }
+
     yield
+
+    # ✅ Shutdown：用 try/except 保護，Supabase 失敗不阻止正常退出
     print("\n🔄 伺服器關閉中...")
-    await tracker.save_session()
-    summary = await brain.generate_session_summary()
-    if summary:
-        print(f"📝 本場摘要：{summary}")
-    else:
-        print("📭 本場無摘要可儲存")
+    try:
+        await tracker.save_session()
+    except Exception as e:
+        print(f"⚠️ 行為記憶儲存失敗: {e}")
+
+    try:
+        summary = await brain.generate_session_summary()
+        if summary:
+            print(f"📝 本場摘要：{summary}")
+        else:
+            print("📭 本場無摘要可儲存")
+    except Exception as e:
+        print(f"⚠️ 摘要生成失敗: {e}")
 
 # ─────────────────────────────────────────
 # FastAPI App
@@ -224,6 +248,7 @@ async def websocket_endpoint(
 # ─────────────────────────────────────────
 async def process_and_respond(websocket: WebSocket, user_msg: str, send_lock: asyncio.Lock):
     
+    # ✅ 第三步修改：加上 await，因為我們新寫的 Supabase RAG 是非同步(async)的
     print(f"🧠 正在 Supabase 搜尋關於「{user_msg}」的相關記憶...")
     context = await rag_system.retrieve_memory(query=user_msg, k=2)
 
@@ -239,7 +264,6 @@ async def process_and_respond(websocket: WebSocket, user_msg: str, send_lock: as
     )
     print(f"🧠 大腦決策: {json.dumps(response_data, ensure_ascii=False)}")
 
-    # ✅ 修正：接收 TTS 回傳值，只有成功才附上 audio_url
     audio_filename = f"live_{int(time.time())}.wav"
     saved_path = await voice_engine.text_to_speech(
         text=response_data["dialogue"],
@@ -251,18 +275,13 @@ async def process_and_respond(websocket: WebSocket, user_msg: str, send_lock: as
         "dialogue":  response_data["dialogue"],
         "emotion":   response_data["emotion"],
         "action":    response_data["action"],
-        # ✅ TTS 失敗時 saved_path 為 None，audio_url 設為空字串避免前端 404
         "audio_url": f"https://vtuber-backend-qwmt.onrender.com/audio/{audio_filename}" if saved_path else "",
         "is_idle":   False,
     }
 
     async with send_lock:
         await websocket.send_text(json.dumps(payload, ensure_ascii=False))
-    
-    if saved_path:
-        print("📦 回應已發送（含音訊）！")
-    else:
-        print("📦 回應已發送（無音訊，TTS 失敗）！")
+    print("📦 回應已發送（含音訊）！" if saved_path else "📦 回應已發送（無音訊，TTS 失敗）！")
 
 # ─────────────────────────────────────────
 # 共用：Idle 自動搭話
@@ -272,7 +291,6 @@ async def send_idle_response(websocket: WebSocket, stage: str, send_lock: asynci
     idle     = get_idle_prompt(stage, intimacy)
     print(f"[Idle] stage={stage}，觸發：{idle['text']}")
 
-    # ✅ 修正：接收 TTS 回傳值
     audio_filename = f"idle_{int(time.time())}.wav"
     saved_path = await voice_engine.text_to_speech(
         text=idle["text"],
@@ -284,7 +302,6 @@ async def send_idle_response(websocket: WebSocket, stage: str, send_lock: asynci
         "dialogue":  idle["text"],
         "emotion":   idle["emotion"],
         "action":    idle["action"],
-        # ✅ TTS 失敗時不附 audio_url
         "audio_url": f"https://vtuber-backend-qwmt.onrender.com/audio/{audio_filename}" if saved_path else "",
         "is_idle":   True,
         "stage":     stage,

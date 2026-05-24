@@ -18,7 +18,7 @@ def generate_token(client_id: str = "default") -> str:
     """
     timestamp = str(int(time.time()))
     message   = f"{client_id}:{timestamp}"
-    signature = hmac.new(
+    signature = hmac.HMAC(
         APP_SECRET.encode("utf-8"),
         message.encode("utf-8"),
         hashlib.sha256
@@ -54,11 +54,7 @@ def verify_token(token: str, client_id: str = "default",
 
         # 重新計算 HMAC（與 generate_token 完全相同的邏輯）
         message      = f"{client_id}:{timestamp_str}"
-        expected_sig = hmac.new(
-            APP_SECRET.encode("utf-8"),
-            message.encode("utf-8"),
-            hashlib.sha256
-        ).hexdigest()
+        expected_sig = hmac.HMAC(APP_SECRET.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
 
         # 安全比對（防止 timing attack）
         result = hmac.compare_digest(received_sig, expected_sig)

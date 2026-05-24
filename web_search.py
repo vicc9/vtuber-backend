@@ -7,13 +7,23 @@ load_dotenv()
 class WebSearcher:
     def __init__(self):
         api_key = os.getenv("TAVILY_API_KEY")
+        # ✅ 修正：API key 不存在時不崩潰，search() 呼叫時才回報
         if not api_key:
-            raise ValueError("❌ 找不到 TAVILY_API_KEY，請檢查 .env 檔案！")
-        self.client = TavilyClient(api_key=api_key)
-        print("🔍 網路搜尋模組初始化完成！")
+            print("⚠️ 找不到 TAVILY_API_KEY，網路搜尋功能將停用")
+            self.client = None
+        else:
+            try:
+                self.client = TavilyClient(api_key=api_key)
+                print("🔍 網路搜尋模組初始化完成！")
+            except Exception as e:
+                print(f"⚠️ Tavily 初始化失敗: {e}")
+                self.client = None
 
     def search(self, query: str, max_results: int = 3) -> str:
         """執行搜尋，回傳整理好的文字摘要"""
+        if self.client is None:
+            print("⚠️ Tavily client 未初始化，跳過搜尋")
+            return "網路搜尋功能未啟用"
         try:
             print(f"🌐 正在搜尋：{query}")
             response = self.client.search(

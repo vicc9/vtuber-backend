@@ -8,7 +8,8 @@ load_dotenv()
 class MemoryManager:
     def __init__(self):
         url = os.getenv("SUPABASE_URL")
-        key = os.getenv("SUPABASE_KEY")
+        # ✅ 優先使用 service_role key 繞過 RLS
+        key = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY")
         self.supabase: Client = create_client(url, key)
         self.session_id = str(uuid.uuid4())
         print(f"🧠 記憶系統啟動，場次 ID: {self.session_id}")

@@ -6,13 +6,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ================= 加上這段除錯碼 =================
-test_url = os.getenv("SUPABASE_URL")
-test_key = os.getenv("SUPABASE_KEY")
-print(f"🚨 [DEBUG] 抓到的 URL: {test_url}")
-print(f"🚨 [DEBUG] 抓到的 KEY (前10字): {str(test_key)[:10] if test_key else '完全沒抓到(None)'}")
-# ===============================================
-supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+# ✅ 修正：延遲初始化，避免 import 時就連線 Supabase 導致啟動崩潰
+_supabase_client = None
+
+def _get_supabase():
+    global _supabase_client
+    if _supabase_client is None:
+        url = os.getenv("SUPABASE_URL")
+        # 優先用 service_role key 繞過 RLS
+        key = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY")
+        if not url or not key:
+            raise RuntimeError("缺少 SUPABASE_URL 或 SUPABASE_KEY 環境變數")
+        _supabase_client = create_client(url, key)
+    return _supabase_client
 
 
 class BehaviorTracker:
@@ -64,14 +70,14 @@ class BehaviorTracker:
 
         # 讀取舊親密度，累積增加
         intimacy_delta = min(self.total_inputs * 2, 20)
-        old = supabase.table("user_behavior") \
+        old = _get_supabase().table("user_behavior") \
             .select("intimacy_score") \
             .order("created_at", desc=True) \
             .limit(1).execute()
         old_score = old.data[0]["intimacy_score"] if old.data else 0
         new_score = min(old_score + intimacy_delta, 100)
 
-        supabase.table("user_behavior").insert({
+        _get_supabase().table("user_behavior").insert({
             "session_date":    str(date.today()),
             "avg_silence_sec": round(avg_s, 1),
             "max_silence_sec": round(max_s, 1),
@@ -91,7 +97,7 @@ async def load_behavior_context() -> dict:
     回傳動態閾值與個性化 prompt。
     """
     try:
-        result = supabase.table("user_behavior") \
+        result = _get_supabase().table("user_behavior") \
             .select("*") \
             .order("created_at", desc=True) \
             .limit(5).execute()
